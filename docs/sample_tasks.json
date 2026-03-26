@@ -1,0 +1,48 @@
+{
+  "tasks": [
+    {
+      "id": "demo-1",
+      "task": "Fetch example.com homepage",
+      "type": "browse",
+      "url": "https://example.com",
+      "status": "pending",
+      "created": "2025-03-26T12:00:00Z",
+      "attempts": 0,
+      "last_error": "",
+      "result": null
+    },
+    {
+      "id": "demo-2",
+      "task": "Find latest AI automation trends",
+      "type": "research",
+      "query": "AI automation trends 2024",
+      "max_results": 5,
+      "follow_up_browse": false,
+      "status": "pending",
+      "created": "2025-03-26T12:01:00Z",
+      "attempts": 0,
+      "last_error": "",
+      "result": null
+    },
+    {
+      "id": "demo-3",
+      "task": "Submit demo contact form",
+      "type": "fill",
+      "url": "https://demo.testfire.net/login.aspx",
+      "selectors": {
+        "username": "input[id='uid']",
+        "password": "input[id='pass']"
+      },
+      "values": {
+        "username": "demo_user",
+        "password": "secret123"
+      },
+      "status": "pending",
+      "created": "2025-03-26T12:02:00Z",
+      "attempts": 0,
+      "last_error": "",
+      "result": null
+    }
+  ],
+  "version": "0.1"
+}

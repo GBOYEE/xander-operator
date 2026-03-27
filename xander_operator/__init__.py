@@ -316,6 +316,24 @@ def run_once():
         return
 
     task_id = task["id"]
+
+    # Validate task (v1.1.0: input validation & safety detectors)
+    try:
+        from . import detectors
+        issues = detectors.validate_task(task)
+        if issues:
+            error_msg = "; ".join(issues)
+            log.error(f"Task validation failed: {error_msg}")
+            update_task(task_id, {"status": "failed", "last_error": error_msg})
+            return
+        safety_warnings = detectors.safety_check(task)
+        if safety_warnings:
+            log.warning(f"Safety warnings: {'; '.join(safety_warnings)}")
+    except Exception as e:
+        log.exception("Validation error")
+        update_task(task_id, {"status": "failed", "last_error": f"validation error: {e}"})
+        return
+
     update_task(task_id, {"status": "in_progress", "attempts": task.get("attempts", 0) + 1})
     log.info(f"Starting task {task_id[:8]}: {task['task']}")
 
@@ -373,6 +391,7 @@ def main():
     parser.add_argument("query", nargs="*", help="Search query if --search")
     parser.add_argument("--top", type=int, default=5, help="Number of search results (default 5)")
     parser.add_argument("--auto-approve", action="store_true", help="Skip approval prompt (for CI)")
+    parser.add_argument("--report", action="store_true", help="Generate HTML report after execution")
     args = parser.parse_args()
 
     # Override workspace if provided
@@ -411,6 +430,13 @@ def main():
 
     log.info("🔧 Operator booting")
     run_once()
+    if args.report:
+        try:
+            from . import reporter
+            report_path = reporter.generate_report(store=_task_store)
+            log.info(f"HTML report generated: {report_path}")
+        except Exception as e:
+            log.exception("Failed to generate HTML report")
     log.info("✅ Operator run complete")
 
 if __name__ == "__main__":

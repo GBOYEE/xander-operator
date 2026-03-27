@@ -2,6 +2,12 @@
 playwright>=1.40.0
 duckduckgo-search>=4.0
 
+# LLM integration (OpenAI-compatible, supports Ollama)
+openai>=1.0.0
+
+# HTML reporting
+jinja2>=3.1.0
+
 # Optional: vector memory (messenger)
 sentence-transformers>=2.2.0
 faiss-cpu>=1.7.4
@@ -9,3 +15,7 @@ numpy>=1.24.0
 
 # CLI utilities (if needed)
 argcomplete>=3.0
+
+# Testing
+pytest>=8.0.0
+pytest-mock>=3.12.0

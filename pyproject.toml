@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xander-operator"
-version = "1.0.1"
-description = "Safe browser automation with human approval gates and vector memory"
+version = "1.1.0"
+description = "Safe browser automation with human approval gates, vector memory, LLM research, and HTML reporting"
 authors = [{name="GBOYEE"}]
 license = {text = "MIT"}
 readme = "README.md"
@@ -13,6 +13,8 @@ requires-python = ">=3.10"
 dependencies = [
     "playwright>=1.40.0",
     "duckduckgo-search>=4.0",
+    "openai>=1.0.0",
+    "jinja2>=3.1.0",
 ]
 
 [project.optional-dependencies]

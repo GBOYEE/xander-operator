@@ -23,10 +23,10 @@ vector = [
 ]
 
 [project.scripts]
-operator = "operator.cli:main"
+xander-operator = "xander_operator.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["xander_operator*", "operator*", "vector_memory*", "researcher*"]
+include = ["xander_operator*", "vector_memory*", "researcher*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.md", "*.txt", "*.toml"]

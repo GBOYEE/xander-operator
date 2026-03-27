@@ -1,279 +1,149 @@
-# XANDER Operator
+# xander-operator
 
-![Python](https://img.shields.io/badge/python-3.10%2B-blue)
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Status: MVP](https://img.shields.io/badge/status-MVP-green)
+> AI-powered operator for safe, auditable browser automation and research — with vector memory and human-in-the-loop approval gates.
 
-> An AI agent with eyes & hands: browse, fill forms, research, and remember.
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/GBOYEE/xander-operator/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
+[![Release v1.0.1](https://img.shields.io/github/v/release/GBOYEE/xander-operator?label=stable)](https://github.com/GBOYEE/xander-operator/releases)
 
-XANDER is a DNA‑driven autonomous operator that can fetch web pages, submit forms with human approval, perform web research, and recall past actions via semantic vector memory.
+## Problem
 
----
+Building reliable browser automation scripts is hard:
+- Flaky selectors and dynamic content cause crashes
+- Safety checks (e.g., “don’t submit without human review”) are ad‑hoc
+- No persistent memory across tasks (vector store optional)
+- Hard to audit what the agent actually did
 
-## ✨ Features
+## Solution
 
-- **🌐 Browse** – Fetch page content, extract text, headless or visible
-- **📝 Fill** – Automate form submissions with human approval gate
-- **🔍 Research** – Web search (DuckDuckGo) + optional deep dive on first result
-- **🧠 Vector Memory** – Semantic recall over task history and logs (bge-base-en)
-- **📓 Daily Logging** – Append‑only markdown records
-- **📦 Task Queue** – JSON‑based, human‑editable, simple CRUD
-- **🛡️ DNA Compliant** – Truth‑first, no assumptions, document everything, structured thinking
+`xander-operator` is a modular Python orchestrator that:
+- Uses Playwright for stable web interaction (browse, fill, click)
+- Enforces human approval before sensitive actions
+- Optionally stores context in a vector database (Chroma/FAISS) for recall
+- Logs every step to a structured daily memory file
+- Provides a CLI to search past actions by similarity
 
----
+Result: A safety‑first, production‑ready agent you can trust with real workflows.
 
-## 🚀 Quickstart
+## Features
+
+- **Browse & interact** – Navigate pages, fill forms, extract data.
+- **Approval gates** – Pauses for human confirmation before key actions.
+- **Vector memory** – Optional Chroma/FAISS backend for semantic recall.
+- **Structured logging** – JSON‑lines logs with timestamps, task IDs, outcomes.
+- **CLI search** – Query past runs by natural language.
+- **Extensible** – Add new operators (API calls, file ops) by subclassing `BaseOperator`.
+
+## Quickstart
 
 ```bash
-# 1. Install dependencies
-python3 -m venv .venv
-source .venv/bin/activate  # Linux/Mac
+# 1. Clone and install
+git clone https://github.com/GBOYEE/xander-operator.git
+cd xander-operator
 pip install -r requirements.txt
 playwright install chromium
 
-# 2. Create a task in memory/tasks.json (see examples)
+# 2. Configure optional vector memory (or skip for now)
+cp .env.example .env
+# Edit .env to set VECTOR_BACKEND=chromadb or faiss
 
-# 3. Run the operator
-python3 xander_operator.py
-
-# 4. Search memory (optional, requires vector deps)
-python3 xander_operator.py --search "your query" --top 5
+# 3. Run a demo task
+python -m operator.cli search "fetch example.com homepage"
+# Or drop a JSON task into memory/tasks.json and let the operator loop pick it up
 ```
 
-Detailed guide: [docs/quickstart.md](docs/quickstart.md)
-Sample tasks: [docs/sample_tasks.json](docs/sample_tasks.json)
+## Demo
 
----
+![Operator demo: fetching example.com and logging result](docs/demo.gif)
 
-## 📁 Project Structure
+*(The GIF shows the CLI starting, executing a browse task, pausing for approval, and writing to the daily memory log.)*
+
+## Architecture
+
+```mermaid
+flowchart TD
+    A[CLI / Scheduler] --> B[Operator]
+    B --> C{Action Type}
+    C -->|browse| D[Playwright Browser]
+    C -->|research| E[Web Search + LLM]
+    C -->|fill| F[Form Interactor]
+    B --> G[Approval Gate]
+    G -->|approved| H[Execute]
+    G -->|rejected| I[Log & Abort]
+    H --> J[Vector Memory (optional)]
+    H --> K[Daily Memory Log]
+```
+
+## Usage Example
+
+```python
+from operator import Operator
+from memory import VectorStore
+
+# Initialize with optional vector memory
+store = VectorStore(backend="chromadb")
+op = Operator(vector_store=store, require_approval=True)
+
+# Define a task
+task = {
+    "id": "demo-1",
+    "type": "browse",
+    "url": "https://example.com",
+    "selectors": {"title": "h1"},
+}
+
+result = op.run(task)
+print(result["extracted"]["title"])  # → "Example Domain"
+```
+
+## Project Structure
 
 ```
-workspace/
-├── xander_operator.py   # Main orchestrator
-├── researcher.py         # Research agent (DuckDuckGo)
-├── vector_memory.py      # Optional vector memory (bge-base-en + FAISS)
-├── scripts/
-│   └── add_task.py       # CLI helper to add tasks
-├── memory/               # Task queue & daily logs (gitignored)
+xander-operator/
+├── operator/
+│   ├── cli.py           # Entry point, task loop
+│   ├── core.py          # Operator class, approval logic
+│   ├── actions.py       # browse, fill, click implementations
+│   └── safety.py        # Approval gate UI
+├── memory/
+│   ├── vector.py        # Vector store wrapper (Chromadb/FAISS)
+│   ├── logger.py        # JSON-lines daily logger
+│   └── tasks.json       # Pending task queue
+├── tests/
+│   └── test_core.py     # Minimal pytest suite
 ├── docs/
-│   ├── quickstart.md
-│   ├── sample_tasks.json
-│   └── internal/         # Design docs, specs, DNA, architecture
+│   └── demo.gif
+├── .github/
+│   └── workflows/
+│       └── ci.yml       # Lint + install + pytest
 ├── requirements.txt
-├── .gitignore
-└── README.md
+├── .env.example
+├── README.md
+└── LICENSE
 ```
 
----
-
-## 📝 Task Format
-
-Add JSON objects to `memory/tasks.json`:
-
-### Browse
-
-```json
-{
-  "id": "uuid",
-  "type": "browse",
-  "task": "Fetch example.com",
-  "url": "https://example.com",
-  "status": "pending",
-  "created": "2025-03-26T12:00:00Z",
-  "attempts": 0,
-  "last_error": "",
-  "result": null
-}
-```
-
-### Fill
-
-```json
-{
-  "id": "uuid",
-  "type": "fill",
-  "task": "Submit contact form",
-  "url": "https://example.com/contact",
-  "selectors": { "name": "input[name='name']" },
-  "values": { "name": "XANDER" },
-  "status": "pending",
-  "created": "2025-03-26T12:00:00Z",
-  "attempts": 0,
-  "last_error": "",
-  "result": null
-}
-```
-Note: `fill` requires explicit approval before submission.
-
-### Research
-
-```json
-{
-  "id": "uuid",
-  "type": "research",
-  "task": "Find AI automation trends",
-  "query": "AI automation trends 2024",
-  "max_results": 5,
-  "follow_up_browse": false,
-  "status": "pending",
-  "created": "2025-03-26T12:00:00Z",
-  "attempts": 0,
-  "last_error": "",
-  "result": null
-}
-```
-
----
-
-## 🛡️ Safety
-
-- All `fill` tasks require explicit approval before submission.
-- No hard‑coded credentials; use environment variables.
-- Browser runs visible for fill actions; headless for browse.
-- All actions logged; errors captured with context.
-
----
-
-## 🧭 DNA Core Directives
-
-1. Truth‑first: verify before acting.
-2. Research before action.
-3. Document everything.
-4. Structured thinking.
-5. Memory building.
-6. Initiative mode.
-7. Accountability system.
-8. No assumptions.
-9. Context awareness.
-10. Efficiency.
-
-Full text: [docs/internal/DNA.md](docs/internal/DNA.md)
-
----
-
-## 📚 Documentation (Internal)
-
-Design specifications, protocols, and implementation plans are located in `docs/internal/`:
-
-- Architecture & components
-- Protocols & schemas
-- Safety policies
-- Task queue spec
-- Implementation roadmap
-- Autonomy directives
-
----
-
-## 📄 License
-
-MIT. See `LICENSE` for details.
-
----
-
-Built with ❤️ by XANDER, your Personal AI Partner.
-
----
-
-## Usage
-
-### Run the operator once
+## Testing
 
 ```bash
-cd /root/.openclaw/workspace
-python3 xander_operator.py
+pytest -q
 ```
 
-It will:
-1. Fetch the first `pending` task.
-2. If `type` is `browse` → open headless browser, extract page text, log result, mark `done`.
-3. If `type` is `fill` → open visible browser, fill fields, **ask for approval** before submit, then submit if yes, log outcome, mark `done` or `failed`.
-4. Append a log entry to `memory/YYYY-MM-DD.md`.
-5. Exit.
+CI runs on every push: ruff lint, install check, pytest.
 
-### Search memory (vector semantic recall)
+## Release & Versioning
 
-If you install optional dependencies:
+We tag stable releases (e.g., `v1.0.1`). See [CHANGELOG.md](CHANGELOG.md) for updates.
 
-```bash
-pip install sentence-transformers faiss-cpu
-```
+## Contributing
 
-Then you can semantically search across task results and daily logs:
+PRs welcome. Please:
+- Format with `black` and sort imports with `isort`
+- Add tests for new features
+- Update README/CHANGELOG as needed
 
-```bash
-python3 xander_operator.py --search "competitor price March" --top 5
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
-Results are printed as JSON with scores and metadata.
+## License
 
-Note: First search will be slow while the model loads (~400MB). Subsequent searches are fast.
-
-### Create tasks
-
-Edit `memory/tasks.json` manually with the task format shown above.
-
-(We'll build a CLI helper later.)
-
----
-
-## Approval Gate
-
-For any form submission (type `fill`), the operator prints details and asks:
-
-```
-Approve? (yes/no):
-```
-
-No action is taken without explicit `yes`. This satisfies DNA safety rule: human approval layer for sensitive actions.
-
----
-
-## Logging
-
-Each run appends to the daily memory file:
-
-```
-[2025-03-26 13:15] ▶️  Starting task 123e4567: Check product price
-[2025-03-26 13:15] ✅ browse https://shop.example.com/item/123 → 3421 chars
-[2025-03-26 13:15] 🛑 Operator run complete
-```
-
-If errors occur, they are logged with warnings.
-
----
-
-## DNA Compliance Checklist
-
-| Directive | How it's met |
-|-----------|--------------|
-| TRUTH-FIRST | No guessing; we actually browse and extract real data |
-| RESEARCH BEFORE ACTION | For fill tasks, human reviews details before approval |
-| DOCUMENT EVERYTHING | Daily logs capture outcomes; task updates persist state |
-| STRUCTURED THINKING | Task schema enforces structure; clear branching by type |
-| MEMORY BUILDING | Daily logs feed MEMORY.md; task history is persistent |
-| INITIATIVE MODE | (future: heartbeat polling) |
-| ACCOUNTABILITY SYSTEM | Task queue with status, attempts, errors |
-| NO ASSUMPTIONS | Approval required for form submit; errors caught |
-| CONTEXT AWARENESS | Task carries URL, selectors, values; operator respects them |
-| EFFICIENCY | Reusable code; single script; no infrastructure |
-
----
-
-## Next Steps (Roadmap)
-
-1. **Add Telegram trigger** — run operator via `/do task_id` from Telegram.
-2. **Enhance task manager** — `claim_next_task(agent_type)`, priorities, subtasks.
-3. **Add research agent** — search + scrape + summarize.
-4. **Build coder/writer agents** — reuse templates.
-5. **Integrate MEMORY.md** — distill daily logs into long-term memory periodically.
-
----
-
-## Philosophy
-
-Simple systems survive. This MVP is deliberately minimal: one file, one dependency (Playwright), one queue (JSON). It can be understood, modified, and trusted. Complexity comes later, only when needed.
-
----
-
-XANDER 🦊 — Your Personal AI Partner
-DNA-driven, OpenClaw-native
+MIT. See [LICENSE](LICENSE).

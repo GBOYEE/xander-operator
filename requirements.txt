@@ -1,10 +1,11 @@
-# Core dependencies for operator.py
+# Core
 playwright>=1.40.0
-
-# Researcher agent
 duckduckgo-search>=4.0
 
-# Optional: vector memory for semantic recall
+# Optional: vector memory (messenger)
 sentence-transformers>=2.2.0
-faiss-cpu>=1.7.0  # or faiss-gpu if CUDA available
-# Note: bge-base-en model (~400MB) will be downloaded on first use
+faiss-cpu>=1.7.4
+numpy>=1.24.0
+
+# CLI utilities (if needed)
+argcomplete>=3.0

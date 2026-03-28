@@ -10,6 +10,7 @@ import sys
 import sqlite3
 import logging
 import argparse
+import time
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -36,6 +37,10 @@ def _init_researcher():
         RESEARCHER_AVAILABLE = True
     except ImportError:
         RESEARCHER_AVAILABLE = False
+
+# Memory & Skills
+from . import memory as memory_mod
+from .skills import get_skills
 
 # ==================== CONFIGURATION ====================
 def _get_workspace() -> Path:
@@ -81,7 +86,9 @@ class TaskStore:
                     created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     attempts INTEGER DEFAULT 0,
                     last_error TEXT,
-                    result TEXT  -- JSON
+                    result TEXT,  -- JSON
+                    params TEXT,  -- JSON, flexible parameters
+                    next_action TEXT
                 )
             """)
             conn.commit()
@@ -104,10 +111,11 @@ class TaskStore:
                         selectors_json = json.dumps(t.get("selectors", {}))
                         values_json = json.dumps(t.get("values", {}))
                         result_json = json.dumps(t.get("result")) if t.get("result") is not None else None
+                        params_json = json.dumps(t.get("params", {}))
                         conn.execute("""
                             INSERT OR REPLACE INTO tasks
-                            (id, description, type, url, selectors, field_values, status, created, attempts, last_error, result)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (id, description, type, url, selectors, field_values, status, created, attempts, last_error, result, params, next_action)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             t["id"],
                             t.get("task") or t.get("desc", ""),
@@ -119,7 +127,9 @@ class TaskStore:
                             t.get("created", datetime.utcnow().isoformat()),
                             t.get("attempts", 0),
                             t.get("last_error", ""),
-                            result_json
+                            result_json,
+                            params_json,
+                            t.get("next_action", "")
                         ))
                     conn.commit()
                 log.info(f"Migrated {len(tasks)} tasks from legacy tasks.json")
@@ -131,13 +141,20 @@ class TaskStore:
         task_id = str(uuid4())
         selectors_json = json.dumps(selectors or {})
         values_json = json.dumps(values or {})
+        # Extract known extras
+        next_action = extra.pop('next_action', "")
+        explicit_params = extra.pop('params', {})
+        # Remaining extra fields become part of params
+        params = {**explicit_params, **extra}
+        params_json = json.dumps(params)
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
-                INSERT INTO tasks (id, description, type, url, selectors, field_values, status, created, attempts, last_error, result)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO tasks (id, description, type, url, selectors, field_values, status, created, attempts, last_error, result, params, next_action)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 task_id, desc, task_type, url, selectors_json, values_json,
-                'pending', datetime.utcnow().isoformat(), 0, '', None
+                'pending', datetime.utcnow().isoformat(), 0, '', None,
+                params_json, next_action
             ))
             conn.commit()
         log.info(f"Added task {task_id[:8]}: {desc}")
@@ -156,6 +173,14 @@ class TaskStore:
             task['values'] = json.loads(task.pop('field_values') or '{}')
             if task['result']:
                 task['result'] = json.loads(task['result'])
+            if task.get('params'):
+                task['params'] = json.loads(task['params'])
+            else:
+                task['params'] = {}
+            # Flatten params into top-level (do not override existing keys)
+            for k, v in task['params'].items():
+                if k not in task:
+                    task[k] = v
             # Rename description -> task for compatibility
             task['task'] = task.pop('description')
             return task
@@ -172,6 +197,14 @@ class TaskStore:
             task['values'] = json.loads(task.pop('field_values') or '{}')
             if task['result']:
                 task['result'] = json.loads(task['result'])
+            if task.get('params'):
+                task['params'] = json.loads(task['params'])
+            else:
+                task['params'] = {}
+            # Flatten params into top-level
+            for k, v in task['params'].items():
+                if k not in task:
+                    task[k] = v
             task['task'] = task.pop('description')
             return task
 
@@ -179,7 +212,7 @@ class TaskStore:
         fields = []
         values = []
         for k, v in updates.items():
-            if k in ('selectors', 'values') and isinstance(v, dict):
+            if k in ('selectors', 'values', 'params') and isinstance(v, dict):
                 v = json.dumps(v)
             elif k == 'result' and isinstance(v, (dict, list)):
                 v = json.dumps(v)
@@ -324,6 +357,26 @@ def request_approval(task_desc: str, url: str, action_details) -> bool:
     return resp in ("yes", "y")
 
 # ==================== ORCHESTRATOR ====================
+def reflect(task: Dict):
+    """Write a reflection lesson and consider skill creation."""
+    status = task.get("status")
+    desc = task.get("task") or task.get("description", "")
+    ttype = task.get("type")
+    error = task.get("last_error", "")
+    timestamp = datetime.now().isoformat(timespec='seconds')
+    if status == 'done':
+        lesson = f"[REFLECT] {timestamp}: Task '{desc}' (type={ttype}) succeeded."
+    else:
+        lesson = f"[REFLECT] {timestamp}: Task '{desc}' (type={ttype}) failed: {error}"
+    log.info(lesson)
+    # Append to today's memory log
+    try:
+        log_path = MEMORY_DIR / f"{datetime.now():%Y-%m-%d}.md"
+        with log_path.open("a") as f:
+            f.write(f"{lesson}\n")
+    except Exception:
+        pass
+
 def run_once():
     task = get_next_task()
     if not task:
@@ -331,6 +384,26 @@ def run_once():
         return
 
     task_id = task["id"]
+
+    # Load relevant memory context (for future decision-making; log for now)
+    try:
+        snippets = memory_mod.load_relevant_memory(task)
+        if snippets:
+            log.info(f"Memory context: {len(snippets)} snippets")
+            for s in snippets[:3]:
+                log.debug(f"  - {s}")
+    except Exception as e:
+        log.warning(f"Memory retrieval failed: {e}")
+
+    # Match skill (for logging and future routing)
+    try:
+        skills = get_skills()
+        matched = skills.match(task)
+        if matched:
+            log.info(f"Matched skill: {matched}")
+            task['_skill'] = matched  # for reflection
+    except Exception as e:
+        log.warning(f"Skill matching failed: {e}")
 
     # Validate task (v1.1.0: input validation & safety detectors)
     try:
@@ -340,6 +413,9 @@ def run_once():
             error_msg = "; ".join(issues)
             log.error(f"Task validation failed: {error_msg}")
             update_task(task_id, {"status": "failed", "last_error": error_msg})
+            # Reflect on validation failure
+            updated = get_task(task_id)
+            reflect(updated)
             return
         safety_warnings = detectors.safety_check(task)
         if safety_warnings:
@@ -347,6 +423,8 @@ def run_once():
     except Exception as e:
         log.exception("Validation error")
         update_task(task_id, {"status": "failed", "last_error": f"validation error: {e}"})
+        updated = get_task(task_id)
+        reflect(updated)
         return
 
     update_task(task_id, {"status": "in_progress", "attempts": task.get("attempts", 0) + 1})
@@ -392,6 +470,32 @@ def run_once():
                 except Exception as e:
                     log.exception("Research exception")
                     update_task(task_id, {"status": "failed", "last_error": str(e)})
+
+        elif task["type"] == "send_telegram":
+            chat_id = int(task.get("chat_id") or os.getenv("TELEGRAM_CHAT_ID", 0))
+            text = task.get("text") or task.get("task", "")
+            if not chat_id:
+                raise ValueError("chat_id required for send_telegram task")
+            from . import telegram
+            tg = telegram.get_telegram()
+            tg.send_message(chat_id, text)
+            update_task(task_id, {"status": "done", "result": {"sent": True}})
+            log.info(f"Sent Telegram message to {chat_id}")
+
+        elif task["type"] == "send_telegram_file":
+            chat_id = int(task.get("chat_id") or os.getenv("TELEGRAM_CHAT_ID", 0))
+            file_path = task.get("file_path")
+            caption = task.get("caption")
+            if not chat_id or not file_path:
+                raise ValueError("chat_id and file_path required for send_telegram_file task")
+            from . import telegram, file_utils
+            file_utils.ensure_file(file_path)
+            file_utils.enforce_telegram_limit(file_path)
+            tg = telegram.get_telegram()
+            tg.send_file(chat_id, file_path, caption=caption)
+            update_task(task_id, {"status": "done", "result": {"sent": True}})
+            log.info(f"Sent Telegram file {file_path} to {chat_id}")
+
         else:
             log.warning(f"Unknown task type: {task['type']}")
             update_task(task_id, {"status": "failed", "last_error": "unknown type"})
@@ -399,6 +503,30 @@ def run_once():
     except Exception as e:
         log.exception("Unexpected error in run_once")
         update_task(task_id, {"status": "failed", "last_error": str(e)})
+
+    # Reflect on task outcome (success or failure)
+    try:
+        updated = _task_store.get_task(task_id)
+        if updated:
+            reflect(updated)
+    except Exception as e:
+        log.warning(f"Reflection failed: {e}")
+
+def run_loop(poll_interval: float = 2.0):
+    """
+    Continuously poll for pending tasks and execute them.
+    Runs until interrupted (Ctrl+C).
+    """
+    log.info("Starting XANDER operator loop")
+    try:
+        while True:
+            run_once()
+            time.sleep(poll_interval)
+    except KeyboardInterrupt:
+        log.info("Operator loop stopped by user")
+    except Exception as e:
+        log.exception("Operator loop crashed")
+        raise
 
 # ==================== CLI ====================
 def main():
@@ -409,6 +537,8 @@ def main():
     parser.add_argument("--top", type=int, default=5, help="Number of search results (default 5)")
     parser.add_argument("--auto-approve", action="store_true", help="Skip approval prompt (for CI)")
     parser.add_argument("--report", action="store_true", help="Generate HTML report after execution")
+    parser.add_argument("--loop", action="store_true", help="Run continuously, polling for tasks")
+    parser.add_argument("--interval", type=float, default=2.0, help="Poll interval in seconds (default 2.0)")
     args = parser.parse_args()
 
     # Override workspace if provided
@@ -448,15 +578,18 @@ def main():
         return
 
     log.info("🔧 Operator booting")
-    run_once()
-    if args.report:
-        try:
-            from . import reporter
-            report_path = reporter.generate_report(store=_task_store)
-            log.info(f"HTML report generated: {report_path}")
-        except Exception as e:
-            log.exception("Failed to generate HTML report")
-    log.info("✅ Operator run complete")
+    if args.loop:
+        run_loop(poll_interval=args.interval)
+    else:
+        run_once()
+        if args.report:
+            try:
+                from . import reporter
+                report_path = reporter.generate_report(store=_task_store)
+                log.info(f"HTML report generated: {report_path}")
+            except Exception as e:
+                log.exception("Failed to generate HTML report")
+        log.info("✅ Operator run complete")
 
 if __name__ == "__main__":
     main()

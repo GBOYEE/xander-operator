@@ -1,6 +1,7 @@
 # Core
 playwright>=1.40.0
 duckduckgo-search>=4.0
+requests>=2.31.0
 
 # LLM integration (OpenAI-compatible, supports Ollama)
 openai>=1.0.0

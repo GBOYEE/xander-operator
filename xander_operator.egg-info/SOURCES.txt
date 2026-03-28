@@ -10,6 +10,7 @@ xander_operator/cli.py
 xander_operator/detectors.py
 xander_operator/llm.py
 xander_operator/reporter.py
+xander_operator/researcher.py
 xander_operator.egg-info/PKG-INFO
 xander_operator.egg-info/SOURCES.txt
 xander_operator.egg-info/dependency_links.txt

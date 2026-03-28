@@ -11,6 +11,7 @@ import sqlite3
 import hashlib
 import json
 import logging
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -20,6 +21,12 @@ try:
     LLM_AVAILABLE = True
 except ImportError:
     LLM_AVAILABLE = False
+
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
 
 log = logging.getLogger(__name__)
 
@@ -83,6 +90,50 @@ class LLMCache:
 # Global cache instance
 _cache = LLMCache()
 
+# -------------------- Ollama Direct API --------------------
+def _generate_via_ollama(
+    prompt: str,
+    model: str,
+    max_tokens: int = 1000,
+    temperature: float = 0.7,
+    retries: int = 3,
+    timeout: int = 120
+) -> Optional[str]:
+    """
+    Call Ollama /api/generate directly (bypasses OpenAI client).
+    Uses stream=false and returns the response text.
+    Includes simple retry logic.
+    """
+    if not REQUESTS_AVAILABLE:
+        log.error("requests library not installed. pip install requests")
+        return None
+
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+    url = f"{base_url}/api/generate"
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+            "num_predict": max_tokens,
+            "temperature": temperature
+        }
+    }
+
+    for attempt in range(1, retries + 1):
+        try:
+            resp = requests.post(url, json=payload, timeout=timeout)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("response", "").strip()
+            else:
+                log.warning(f"Ollama attempt {attempt}: HTTP {resp.status_code}")
+        except Exception as e:
+            log.warning(f"Ollama attempt {attempt} error: {e}")
+        if attempt < retries:
+            time.sleep(1.5)
+    return None
+
 # ==================== CLIENT ====================
 def get_llm_client() -> Optional['OpenAI']:
     if not LLM_AVAILABLE:
@@ -112,17 +163,14 @@ def generate_response(
     use_cache: bool = True
 ) -> Optional[str]:
     """
-    Generate LLM response. If model not provided, reads OPENAI_MODEL from env,
-    else defaults to stepfun/step-1-flash (OpenRouter free tier).
+    Generate LLM response. Supports OpenAI API or Ollama (via direct /api/generate).
+    If model not provided, reads OPENAI_MODEL from env (default: stepfun/step-1-flash).
     """
     if model is None:
         model = os.getenv("OPENAI_MODEL", "stepfun/step-1-flash")
-    """
-    Generate a response from the LLM with optional caching.
-    Returns the text content or None on failure.
-    """
-    if not LLM_AVAILABLE:
-        log.error("OpenAI library not installed")
+
+    if not LLM_AVAILABLE and not (os.getenv("OLLAMA_BASE_URL") and REQUESTS_AVAILABLE):
+        log.error("No LLM backend available (install openai or requests)")
         return None
 
     # Check cache first (model is part of cache key)
@@ -131,6 +179,15 @@ def generate_response(
         if cached:
             return cached
 
+    # Route: if OLLAMA_BASE_URL is set, use direct Ollama API
+    if os.getenv("OLLAMA_BASE_URL"):
+        log.info(f"Using Ollama direct API for model {model}")
+        content = _generate_via_ollama(prompt, model=model, max_tokens=max_tokens, temperature=temperature)
+        if content and use_cache:
+            _cache.set(prompt, content, model)
+        return content
+
+    # Fallback to OpenAI compatible client
     client = get_llm_client()
     if not client:
         return None
@@ -150,7 +207,7 @@ def generate_response(
             _cache.set(prompt, content, model)
         return content
     except Exception as e:
-        log.exception("LLM generation failed")
+        log.exception("LLM generation failed (OpenAI path)")
         return None
 
 def clear_cache():

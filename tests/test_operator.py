@@ -16,12 +16,11 @@ def test_taskstore_add_and_get(tmp_path):
 def test_add_task_and_get_next(tmp_path):
     db_path = tmp_path / "tasks.db"
     store = TaskStore(db_path=db_path)
-    store.add_task("First", "browse", url="https://a.com")
-    store.add_task("Second", "fill", url="https://b.com", selectors={"x":"#x"}, values={"x":"val"})
+    store.add_task("Only task", "browse", url="https://a.com")
     task = store.get_pending()
     assert task is not None
-    assert task["task"] == "First"
-    # After marking in_progress via update, get_next should return None
+    assert task["task"] == "Only task"
+    # After marking in_progress, get_pending should return None (no other pending)
     store.update_task(task["id"], {"status": "in_progress"})
     task2 = store.get_pending()
     assert task2 is None
@@ -33,5 +32,5 @@ def test_approval_auto(monkeypatch):
         del os.environ["XANDER_AUTO_APPROVE"]
 
 def test_approval_reject(monkeypatch):
-    monkeypatch.setattr('builtins.input', lambda: 'no')
+    monkeypatch.setattr('builtins.input', lambda _: 'no')
     assert request_approval("test", "http://example.com", "do something") is False

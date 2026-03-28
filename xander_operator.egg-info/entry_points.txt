@@ -1,0 +1,2 @@
+[console_scripts]
+xander-operator = xander_operator.cli:main

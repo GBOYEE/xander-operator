@@ -84,7 +84,7 @@ class LLMCache:
 _cache = LLMCache()
 
 # ==================== CLIENT ====================
-def get_llm_client() -> Optional[OpenAI]:
+def get_llm_client() -> Optional['OpenAI']:
     if not LLM_AVAILABLE:
         log.error("OpenAI library not installed. Install openai>=1.0.0")
         return None
@@ -106,11 +106,17 @@ def get_llm_client() -> Optional[OpenAI]:
 def generate_response(
     prompt: str,
     *,
-    model: str = "gpt-4o-mini",
+    model: Optional[str] = None,
     max_tokens: int = 1000,
     temperature: float = 0.7,
     use_cache: bool = True
 ) -> Optional[str]:
+    """
+    Generate LLM response. If model not provided, reads OPENAI_MODEL from env,
+    else defaults to stepfun/step-1-flash (OpenRouter free tier).
+    """
+    if model is None:
+        model = os.getenv("OPENAI_MODEL", "stepfun/step-1-flash")
     """
     Generate a response from the LLM with optional caching.
     Returns the text content or None on failure.

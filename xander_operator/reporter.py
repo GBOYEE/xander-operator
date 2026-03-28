@@ -87,7 +87,7 @@ def load_tasks_for_report(store: TaskStore) -> List[Dict[str, Any]]:
         for row in cur.fetchall():
             t = dict(row)
             t['selectors'] = json.loads(t['selectors'] or '{}')
-            t['values'] = json.loads(t['values'] or '{}')
+            t['values'] = json.loads(t.pop('field_values') or '{}')
             if t['result']:
                 try:
                     t['result'] = json.loads(t['result'])
@@ -95,8 +95,8 @@ def load_tasks_for_report(store: TaskStore) -> List[Dict[str, Any]]:
                     t['result'] = str(t['result'])[:1000]
             else:
                 t['result'] = None
-            # Rename desc -> task
-            t['task'] = t.pop('desc')
+            # Rename description -> task
+            t['task'] = t.pop('description')
             tasks.append(t)
     return tasks
 

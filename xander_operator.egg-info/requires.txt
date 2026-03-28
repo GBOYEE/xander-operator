@@ -1,0 +1,9 @@
+playwright>=1.40.0
+duckduckgo-search>=4.0
+openai>=1.0.0
+jinja2>=3.1.0
+
+[vector]
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.4
+numpy>=1.24.0

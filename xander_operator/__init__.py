@@ -17,19 +17,25 @@ from typing import Optional, Dict, Any, List
 
 from playwright.sync_api import sync_playwright
 
-# Optional vector memory
-try:
-    from vector_memory import index_task as vm_index_task, index_log_entry as vm_index_log, search_memory
-    VECTOR_AVAILABLE = True
-except ImportError:
-    VECTOR_AVAILABLE = False
+# Optional vector memory (lazy-loaded)
+VECTOR_AVAILABLE = False
+def _init_vector():
+    global VECTOR_AVAILABLE, vm_index_task, vm_index_log, search_memory
+    try:
+        from vector_memory import index_task as vm_index_task, index_log_entry as vm_index_log, search_memory
+        VECTOR_AVAILABLE = True
+    except ImportError:
+        VECTOR_AVAILABLE = False
 
-# Optional researcher agent
-try:
-    from researcher import research as researcher_research
-    RESEARCHER_AVAILABLE = True
-except ImportError:
-    RESEARCHER_AVAILABLE = False
+# Optional researcher agent (lazy-loaded)
+RESEARCHER_AVAILABLE = False
+def _init_researcher():
+    global RESEARCHER_AVAILABLE, researcher_research
+    try:
+        from researcher import research as researcher_research
+        RESEARCHER_AVAILABLE = True
+    except ImportError:
+        RESEARCHER_AVAILABLE = False
 
 # ==================== CONFIGURATION ====================
 def _get_workspace() -> Path:
@@ -66,11 +72,11 @@ class TaskStore:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS tasks (
                     id TEXT PRIMARY KEY,
-                    desc TEXT NOT NULL,
+                    description TEXT NOT NULL,
                     type TEXT NOT NULL,
                     url TEXT,
                     selectors TEXT,  -- JSON
-                    values TEXT,     -- JSON
+                    field_values TEXT,     -- JSON
                     status TEXT DEFAULT 'pending',
                     created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     attempts INTEGER DEFAULT 0,
@@ -100,7 +106,7 @@ class TaskStore:
                         result_json = json.dumps(t.get("result")) if t.get("result") is not None else None
                         conn.execute("""
                             INSERT OR REPLACE INTO tasks
-                            (id, desc, type, url, selectors, values, status, created, attempts, last_error, result)
+                            (id, description, type, url, selectors, field_values, status, created, attempts, last_error, result)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             t["id"],
@@ -127,7 +133,7 @@ class TaskStore:
         values_json = json.dumps(values or {})
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
-                INSERT INTO tasks (id, desc, type, url, selectors, values, status, created, attempts, last_error, result)
+                INSERT INTO tasks (id, description, type, url, selectors, field_values, status, created, attempts, last_error, result)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 task_id, desc, task_type, url, selectors_json, values_json,
@@ -147,11 +153,11 @@ class TaskStore:
             task = dict(zip(columns, row))
             # Parse JSON fields
             task['selectors'] = json.loads(task['selectors'] or '{}')
-            task['values'] = json.loads(task['values'] or '{}')
+            task['values'] = json.loads(task.pop('field_values') or '{}')
             if task['result']:
                 task['result'] = json.loads(task['result'])
-            # Rename desc -> task for compatibility
-            task['task'] = task.pop('desc')
+            # Rename description -> task for compatibility
+            task['task'] = task.pop('description')
             return task
 
     def get_task(self, task_id: str) -> Optional[Dict]:
@@ -163,10 +169,10 @@ class TaskStore:
             columns = [desc[0] for desc in cur.description]
             task = dict(zip(columns, row))
             task['selectors'] = json.loads(task['selectors'] or '{}')
-            task['values'] = json.loads(task['values'] or '{}')
+            task['values'] = json.loads(task.pop('field_values') or '{}')
             if task['result']:
                 task['result'] = json.loads(task['result'])
-            task['task'] = task.pop('desc')
+            task['task'] = task.pop('description')
             return task
 
     def update_task(self, task_id: str, updates: Dict):
@@ -184,13 +190,17 @@ class TaskStore:
             conn.execute(f"UPDATE tasks SET {', '.join(fields)} WHERE id = ?", values)
             conn.commit()
             # Index in vector memory if available and relevant fields changed
-            if VECTOR_AVAILABLE and ('result' in updates or 'status' in updates):
-                try:
-                    updated = self.get_task(task_id)
-                    if updated:
-                        vm_index_task(updated)
-                except Exception as e:
-                    log.warning(f"Vector indexing failed: {e}")
+            if ('result' in updates or 'status' in updates):
+                # Lazy-init vector memory if not already available
+                if not VECTOR_AVAILABLE:
+                    _init_vector()
+                if VECTOR_AVAILABLE:
+                    try:
+                        updated = self.get_task(task_id)
+                        if updated:
+                            vm_index_task(updated)
+                    except Exception as e:
+                        log.warning(f"Vector indexing failed: {e}")
         log.info(f"Updated task {task_id[:8]}: {updates}")
 
 # Default store (can be overridden by --workspace)
@@ -209,10 +219,10 @@ def load_tasks():
         for row in rows:
             t = dict(zip(cols, row))
             t['selectors'] = json.loads(t['selectors'] or '{}')
-            t['values'] = json.loads(t['values'] or '{}')
+            t['values'] = json.loads(t.pop('field_values') or '{}')
             if t['result']:
                 t['result'] = json.loads(t['result'])
-            t['task'] = t.pop('desc')
+            t['task'] = t.pop('description')
             tasks.append(t)
         return tasks
 
@@ -222,9 +232,14 @@ def get_next_task():
 def update_task(task_id, updates):
     return _task_store.update_task(task_id, updates)
 
-def log(message: str):
-    """Legacy logging function kept for compatibility."""
+# NOTE: The original 'log' function conflicted with the module logger.
+# Renamed to _legacy_log to preserve backward compatibility if needed.
+def _legacy_log(message: str):
+    """Legacy logging function kept for compatibility (renamed)."""
     logging.getLogger(__name__).info(message)
+
+# Ensure 'log' is the module logger (overwrite any previous definition)
+log = logging.getLogger(__name__)
 
 # ==================== OPERATOR CLASS ====================
 class Operator:
@@ -353,6 +368,8 @@ def run_once():
 
         elif task["type"] == "research":
             if not RESEARCHER_AVAILABLE:
+                _init_researcher()  # try to load on first use
+            if not RESEARCHER_AVAILABLE:
                 log.error("Researcher module not available")
                 update_task(task_id, {"status": "failed", "last_error": "researcher missing"})
             else:
@@ -418,6 +435,8 @@ def main():
 
     if args.search:
         if not VECTOR_AVAILABLE:
+            _init_vector()  # try to init on demand
+        if not VECTOR_AVAILABLE:
             print("❌ Vector memory dependencies not installed. Install sentence-transformers and faiss.")
             sys.exit(1)
         query = " ".join(args.query)
@@ -441,3 +460,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# Expose generate_report at top-level for OpenClaw skill integration
+__all__ = ["TaskStore", "Operator", "add_task", "get_next_task", "update_task", "main", "generate_report", "log", "request_approval"]

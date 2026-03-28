@@ -22,10 +22,10 @@ def test_validate_task_localhost_url():
 def test_validate_task_private_ip():
     task = {"id": "1", "type": "browse", "url": "http://192.168.0.1"}
     issues = validate_task(task)
-    assert any("private IP" in issue.lower() for issue in issues)
+    assert any("private ip" in issue.lower() for issue in issues)
 
 def test_validate_task_good():
-    task = {"id": "123", "type": "browse", "url": "https://example.com"}
+    task = {"id": "123", "type": "browse", "url": "https://example.com", "task": "Test browse"}
     issues = validate_task(task)
     assert len(issues) == 0
 

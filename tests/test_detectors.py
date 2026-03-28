@@ -1,5 +1,5 @@
 """Tests for detectors module."""
-import pytest
+import pytest  # noqa: F401
 from xander_operator.detectors import validate_task, safety_check
 
 def test_validate_task_missing_fields():

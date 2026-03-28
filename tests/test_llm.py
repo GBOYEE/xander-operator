@@ -1,7 +1,7 @@
 """Tests for LLM client and caching."""
-import pytest
+import pytest  # noqa: F401
 from unittest.mock import MagicMock, patch
-from xander_operator.llm import generate_response, _cache, clear_cache
+from xander_operator.llm import generate_response, clear_cache
 
 def test_generate_response_mocked(mocker):
     mock_client = MagicMock()

@@ -17,7 +17,7 @@ def load_tasks():
         try:
             data = json.loads(TASK_FILE.read_text())
             return data.get("tasks", [])
-        except:
+        except Exception:
             return []
     return []
 

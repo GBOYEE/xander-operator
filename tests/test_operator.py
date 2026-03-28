@@ -1,7 +1,7 @@
 """Tests for operator core: TaskStore, add_task, request_approval."""
-import pytest
+import pytest  # noqa: F401
 import os
-from xander_operator import TaskStore, add_task, get_next_task, update_task, request_approval
+from xander_operator import TaskStore, get_next_task, update_task, request_approval
 
 def test_taskstore_add_and_get(tmp_path):
     db_path = tmp_path / "tasks.db"

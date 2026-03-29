@@ -1,0 +1,10 @@
+# Default markdownlint configuration
+extends: markdownlint/styleguide
+
+# MD013: Line length
+rules:
+  MD013: false
+  MD041: false  # First line should be a top-level heading
+  MD012: false  # Multiple consecutive blank lines
+  MD029: false  # Ordered list item prefix
+  MD046: false  # Code block style

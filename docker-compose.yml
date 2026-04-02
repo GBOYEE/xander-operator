@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  gateway:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - XANDER_ENV=production
+      - XANDER_PORT=8080
+      - XANDER_DB=/data/tasks.db
+    volumes:
+      - ./data:/data
+      - ./memory:/app/memory
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  operator:
+    build: .
+    command: python -m xander_operator --loop --interval 2.0
+    environment:
+      - XANDER_WORKSPACE=/data
+      - XANDER_DB=/data/tasks.db
+      - OLLAMA_HOST=http://ollama:11434  # optional if using researcher or LLM
+    volumes:
+      - ./data:/data
+      - ./memory:/app/memory
+    depends_on:
+      - gateway
+    restart: unless-stopped

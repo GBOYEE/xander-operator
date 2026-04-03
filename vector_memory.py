@@ -71,12 +71,16 @@ def _init():
         logging.error(f"Vector memory init failed: {e}")
         DEPS_AVAILABLE = False
 
-def _normalize(vec: np.ndarray):
-    """Normalize vector for cosine similarity."""
-    norm = np.linalg.norm(vec)
-    if norm > 0:
-        vec = vec / norm
-    return vec
+if DEPS_AVAILABLE:
+    def _normalize(vec: np.ndarray):
+        """Normalize vector for cosine similarity."""
+        norm = np.linalg.norm(vec)
+        if norm > 0:
+            vec = vec / norm
+        return vec
+else:
+    def _normalize(vec):
+        raise RuntimeError("Vector memory dependencies not available")
 
 def index_text(text: str, metadata: Dict[str, Any], source: str = "generic"):
     """

@@ -16,8 +16,6 @@ from pathlib import Path
 from uuid import uuid4
 from typing import Optional, Dict, Any, List
 
-from playwright.sync_api import sync_playwright
-
 # Optional vector memory (lazy-loaded)
 VECTOR_AVAILABLE = False
 def _init_vector():
@@ -28,12 +26,14 @@ def _init_vector():
     except ImportError:
         VECTOR_AVAILABLE = False
 
+
+
 # Optional researcher agent (lazy-loaded)
 RESEARCHER_AVAILABLE = False
 def _init_researcher():
     global RESEARCHER_AVAILABLE, researcher_research
     try:
-        from researcher import research as researcher_research
+        from .researcher import research as researcher_research
         RESEARCHER_AVAILABLE = True
     except ImportError:
         RESEARCHER_AVAILABLE = False
@@ -88,7 +88,10 @@ class TaskStore:
                     last_error TEXT,
                     result TEXT,  -- JSON
                     params TEXT,  -- JSON, flexible parameters
-                    next_action TEXT
+                    next_action TEXT,
+                    plan TEXT,  -- JSON: GSD plan with steps
+                    steps TEXT,  -- JSON: current step index or progress
+                    validation TEXT  -- JSON: validation criteria and results
                 )
             """)
             conn.commit()
@@ -135,6 +138,18 @@ class TaskStore:
                 log.info(f"Migrated {len(tasks)} tasks from legacy tasks.json")
             except Exception as e:
                 log.warning(f"Failed to migrate legacy tasks: {e}")
+        # Ensure new columns exist (for existing DBs)
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("ALTER TABLE tasks ADD COLUMN plan TEXT")
+                conn.execute("ALTER TABLE tasks ADD COLUMN steps TEXT")
+                conn.execute("ALTER TABLE tasks ADD COLUMN validation TEXT")
+                conn.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column" in str(e).lower():
+                pass  # already added
+            else:
+                log.warning(f"Schema migration error: {e}")
 
     def add_task(self, desc: str, task_type: str, url: Optional[str] = None,
                  selectors: Optional[Dict] = None, values: Optional[Dict] = None, **extra) -> str:
@@ -144,17 +159,23 @@ class TaskStore:
         # Extract known extras
         next_action = extra.pop('next_action', "")
         explicit_params = extra.pop('params', {})
+        plan = extra.pop('plan', None)  # JSON string or dict
+        steps = extra.pop('steps', None)  # JSON string or dict
+        validation = extra.pop('validation', None)  # JSON string or dict
         # Remaining extra fields become part of params
         params = {**explicit_params, **extra}
         params_json = json.dumps(params)
+        plan_json = json.dumps(plan) if plan else None
+        steps_json = json.dumps(steps) if steps else None
+        validation_json = json.dumps(validation) if validation else None
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
-                INSERT INTO tasks (id, description, type, url, selectors, field_values, status, created, attempts, last_error, result, params, next_action)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO tasks (id, description, type, url, selectors, field_values, status, created, attempts, last_error, result, params, next_action, plan, steps, validation)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 task_id, desc, task_type, url, selectors_json, values_json,
                 'pending', datetime.utcnow().isoformat(), 0, '', None,
-                params_json, next_action
+                params_json, next_action, plan_json, steps_json, validation_json
             ))
             conn.commit()
         log.info(f"Added task {task_id[:8]}: {desc}")
@@ -177,6 +198,19 @@ class TaskStore:
                 task['params'] = json.loads(task['params'])
             else:
                 task['params'] = {}
+            # Parse new GSD fields
+            if task.get('plan'):
+                task['plan'] = json.loads(task['plan'])
+            else:
+                task['plan'] = None
+            if task.get('steps'):
+                task['steps'] = json.loads(task['steps'])
+            else:
+                task['steps'] = None
+            if task.get('validation'):
+                task['validation'] = json.loads(task['validation'])
+            else:
+                task['validation'] = None
             # Flatten params into top-level (do not override existing keys)
             for k, v in task['params'].items():
                 if k not in task:
@@ -201,6 +235,19 @@ class TaskStore:
                 task['params'] = json.loads(task['params'])
             else:
                 task['params'] = {}
+            # Parse new GSD fields
+            if task.get('plan'):
+                task['plan'] = json.loads(task['plan'])
+            else:
+                task['plan'] = None
+            if task.get('steps'):
+                task['steps'] = json.loads(task['steps'])
+            else:
+                task['steps'] = None
+            if task.get('validation'):
+                task['validation'] = json.loads(task['validation'])
+            else:
+                task['validation'] = None
             # Flatten params into top-level
             for k, v in task['params'].items():
                 if k not in task:
@@ -212,7 +259,7 @@ class TaskStore:
         fields = []
         values = []
         for k, v in updates.items():
-            if k in ('selectors', 'values', 'params') and isinstance(v, dict):
+            if k in ('selectors', 'values', 'params', 'plan', 'steps', 'validation') and isinstance(v, dict):
                 v = json.dumps(v)
             elif k == 'result' and isinstance(v, (dict, list)):
                 v = json.dumps(v)
@@ -223,7 +270,7 @@ class TaskStore:
             conn.execute(f"UPDATE tasks SET {', '.join(fields)} WHERE id = ?", values)
             conn.commit()
             # Index in vector memory if available and relevant fields changed
-            if ('result' in updates or 'status' in updates):
+            if ('result' in updates or 'status' in updates or 'plan' in updates or 'steps' in updates):
                 # Lazy-init vector memory if not already available
                 if not VECTOR_AVAILABLE:
                     _init_vector()
@@ -384,6 +431,13 @@ def run_once():
         return
 
     task_id = task["id"]
+
+    # Apply model routing (if available)
+    try:
+        from . import model_router
+        model_router.apply_router(task)
+    except Exception:
+        pass  # model router not available
 
     # Load relevant memory context (for future decision-making; log for now)
     try:

@@ -94,7 +94,8 @@ def research(
             prompt_parts.append(f"Additional context from first page:\n{first_page_text[:1500]}\n\n")
         prompt_parts.append("Based on the above, provide a clear, concise answer to the query. Cite sources by number.")
         prompt = "".join(prompt_parts)
-        llm_answer = generate_response(prompt, model="gpt-4o-mini", max_tokens=1000)
+        # Use model from environment (XANDER_MODEL or OPENAI_MODEL) for routing flexibility
+        llm_answer = generate_response(prompt, max_tokens=1000)
         if llm_answer:
             answer = llm_answer
         else:

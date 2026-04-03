@@ -164,10 +164,10 @@ def generate_response(
 ) -> Optional[str]:
     """
     Generate LLM response. Supports OpenAI API or Ollama (via direct /api/generate).
-    If model not provided, reads OPENAI_MODEL from env (default: stepfun/step-1-flash).
+    If model not provided, reads OPENAI_MODEL from env (default: phi3:mini).
     """
     if model is None:
-        model = os.getenv("OPENAI_MODEL", "stepfun/step-1-flash")
+        model = os.getenv("OPENAI_MODEL", "phi3:mini")
 
     if not LLM_AVAILABLE and not (os.getenv("OLLAMA_BASE_URL") and REQUESTS_AVAILABLE):
         log.error("No LLM backend available (install openai or requests)")

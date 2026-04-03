@@ -3,7 +3,6 @@
 AI developer agent that writes code and applies changes safely.
 
 [![CI](https://github.com/GBOYEE/xander-operator/actions/workflows/ci.yml/badge.svg)](https://github.com/GBOYEE/xander-operator/actions)
-[![Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen.svg)](https://github.com/GBOYEE/xander-operator/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## 🎯 Problem

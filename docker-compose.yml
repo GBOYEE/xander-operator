@@ -1,34 +1,35 @@
-version: "3.8"
+version: '3.8'
 
 services:
-  gateway:
+  xander-operator:
     build: .
     ports:
-      - "8080:8080"
+      - "8001:8001"
     environment:
-      - XANDER_ENV=production
-      - XANDER_PORT=8080
-      - XANDER_DB=/data/tasks.db
+      - XANDER_OPERATOR_ENV=production
+      - XANDER_OPERATOR_PORT=8001
+      - OLLAMA_URL=http://ollama:11434
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
-      - ./data:/data
-      - ./memory:/app/memory
+      - ./workspace:/app/workspace
+    depends_on:
+      - ollama
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
       timeout: 5s
       retries: 3
 
-  operator:
-    build: .
-    command: python -m xander_operator --loop --interval 2.0
-    environment:
-      - XANDER_WORKSPACE=/data
-      - XANDER_DB=/data/tasks.db
-      - OLLAMA_HOST=http://ollama:11434  # optional if using researcher or LLM
+  # Optional: local LLM
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
     volumes:
-      - ./data:/data
-      - ./memory:/app/memory
-    depends_on:
-      - gateway
+      - ollama:/root/.ollama
     restart: unless-stopped
+    profiles: ["llm"]
+
+volumes:
+  ollama:

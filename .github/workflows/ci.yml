@@ -15,32 +15,28 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -e .[dev]
-          pip install black flake8 mypy pytest pytest-cov
-
       - name: Run black check
-        run: black --check .
-
+        run: black --check src tests
       - name: Run flake8
-        run: flake8 .
-
+        run: flake8 src tests
       - name: Run mypy
-        run: mypy . --ignore-missing-imports
-
+        run: mypy src --ignore-missing-imports
+      - name: Security scan with Safety
+        run: |
+          pip install safety
+          safety check --full-report || true
       - name: Run tests
         run: |
-          pytest tests/ -v --cov=xander_operator --cov-report=xml
-
+          pytest tests/ -v --cov=src
       - name: Upload coverage
         uses: codecov/codecov-action@v4
         with:

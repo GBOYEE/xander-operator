@@ -1,21 +1,44 @@
+# Pre-commit configuration for GBOYEE repos
+# Copy this file to each repository root
+# Then run: pre-commit install
+
 repos:
+  # Formatters
   - repo: https://github.com/psf/black
-    rev: 24.4.2
+    rev: 24.10.0
     hooks:
       - id: black
         language_version: python3
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.0.0
-    hooks:
-      - id: flake8
-        additional_dependencies: [flake8-bugbear==24.4.26]
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.9.0
-    hooks:
-      - id: mypy
-        additional_dependencies: [types-requests]
-  - repo: https://github.com/timothycrosley/isort
+        args: [--line-length=100]
+
+  - repo: https://github.com/pycqa/isort
     rev: 5.13.2
     hooks:
       - id: isort
-        args: ["--profile", "black"]
+        args: [--profile=black, --line-length=100]
+
+  # Linters
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.1.1
+    hooks:
+      - id: flake8
+        args: [--max-line-length=100, --extend-ignore=E203,W503]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.14.1
+    hooks:
+      - id: mypy
+        additional_dependencies: [pytest, sqlalchemy, fastapi, pydantic]
+        exclude: ^tests/
+        args: [--ignore-missing-imports, --disable-error-code=import-untyped]
+
+  # Testing
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: bash -c 'PYTHONPATH="${PYTHONPATH:-.}" python -m pytest tests/ -v --tb=short --cov=$(basename $(git rev-parse --show-toplevel)) --cov-report=xml 2>&1 | tee pytest_output.xml || exit 1'
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true

@@ -1,9 +1,9 @@
 import json
+import json
 import pytest
 from unittest.mock import MagicMock, patch
 from pathlib import Path
 from xander_operator.agent import CodingAgent
-from xander_operator.config import Settings
 
 def test_agent_creates_file(temp_workspace: Path):
     # Mock LLM to return a simple file creation plan

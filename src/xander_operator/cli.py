@@ -1,31 +1,32 @@
-"""Command-line interface for xander-operator."""
+"""Xander Operator CLI — contract-compliant task execution."""
+
 import argparse
 import json
-import sys
+import logging
 from pathlib import Path
-from .agent import CodingAgent
-from .config import settings
+
+from .operator_agent import OperatorAgent
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def main():
-    parser = argparse.ArgumentParser(description="Xander Operator — AI developer agent")
-    parser.add_argument("--task", required=True, help="Task description for the agent")
-    parser.add_argument("--workdir", type=Path, default=settings.workdir, help="Working directory (must be a git repo)")
-    parser.add_argument("--json", action="store_true", help="Output result as JSON")
+    parser = argparse.ArgumentParser(description="Xander Operator — autonomous agent executor")
+    parser.add_argument("--task", required=True, help="Task description")
+    parser.add_argument("--output", choices=["json", "text"], default="json", help="Output format")
     args = parser.parse_args()
 
-    agent = CodingAgent(workdir=args.workdir)
-    result = agent.execute(args.task)
+    agent = OperatorAgent()
+    contract = agent.run_task(args.task)
 
-    if args.json:
-        print(json.dumps(result, indent=2))
+    if args.output == "json":
+        print(json.dumps(contract, indent=2))
     else:
-        if result["status"] == "success":
-            print(f"✅ Task completed. Files written: {', '.join(result.get('files_written', []))}")
-            if result.get("commit"):
-                print(f"📝 Committed: {result['commit'].get('sha', '')}")
+        # Text summary
+        if contract["status"] == "completed":
+            print(f"✅ Task completed\nOutput: {contract['output_path']}\nSummary: {contract['summary']}")
         else:
-            print(f"❌ Error: {result.get('error')}")
-            sys.exit(1)
+            print(f"❌ Task failed\nError: {contract.get('error', 'unknown')}")
 
 if __name__ == "__main__":
     main()

@@ -13,7 +13,6 @@ import sqlite3
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
-import json
 
 def _get_workspace() -> Path:
     return Path(os.getenv("XANDER_WORKSPACE", Path.home() / ".openclaw" / "workspace")).expanduser()
@@ -50,7 +49,7 @@ def load_relevant_memory(task: Dict[str, Any], max_logs: int = 3) -> List[str]:
             for sec in sections:
                 if query.lower() in sec.lower():
                     snippets.append(f"MEMORY: {sec[:200]}...")
-        except Exception as e:
+        except Exception:
             pass
 
     # 2. Search recent daily logs

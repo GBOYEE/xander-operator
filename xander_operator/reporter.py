@@ -39,7 +39,7 @@ def generate_report(
     # Fetch tasks from the store (all, we'll filter in template if needed)
     try:
         tasks = load_tasks_for_report(store)
-    except Exception as e:
+    except Exception:
         log.exception("Failed to load tasks for report")
         tasks = []
 

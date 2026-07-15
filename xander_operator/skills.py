@@ -7,7 +7,7 @@ Stored in memory/skills.json and loaded at runtime.
 import os
 import json
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, Optional
 
 def _get_workspace() -> Path:
     return Path(os.getenv("XANDER_WORKSPACE", Path.home() / ".openclaw" / "workspace")).expanduser()

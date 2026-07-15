@@ -6,7 +6,7 @@ import logging
 import threading
 import sqlite3
 import json
-from typing import Dict, List, Optional
+from typing import Optional
 from pathlib import Path
 
 from fastapi import FastAPI, Request, HTTPException
@@ -41,7 +41,7 @@ def _run_operator_loop():
             if not VECTOR_AVAILABLE:
                 _init_vector()
             run_once()
-        except Exception as e:
+        except Exception:
             logger.exception("Operator loop error")
             time.sleep(5)
 
@@ -155,11 +155,14 @@ def create_app() -> FastAPI:
                 t = dict(r)
                 t['selectors'] = json.loads(t['selectors'] or '{}')
                 t['field_values'] = json.loads(t['field_values'] or '{}')
-                if t['result']:
-                    t['result'] = json.loads(t['result'])
+                if t.get('result'):
+                    try:
+                        t['result'] = json.loads(t['result'])
+                    except (json.JSONDecodeError, TypeError):
+                        pass
                 if t.get('params'):
                     t['params'] = json.loads(t['params'])
-                t['task'] = t.pop('description')
+                t['task'] = t.get('description')
                 result.append(t)
             return result
 

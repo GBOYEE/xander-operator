@@ -9,12 +9,11 @@ Caches responses in SQLite to avoid重复 calls.
 import os
 import sqlite3
 import hashlib
-import json
 import logging
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional
 
 try:
     from openai import OpenAI
@@ -206,7 +205,7 @@ def generate_response(
         if content and use_cache:
             _cache.set(prompt, content, model)
         return content
-    except Exception as e:
+    except Exception:
         log.exception("LLM generation failed (OpenAI path)")
         return None
 

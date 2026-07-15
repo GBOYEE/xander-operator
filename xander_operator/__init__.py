@@ -11,7 +11,7 @@ import sqlite3
 import logging
 import argparse
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 from typing import Optional, Dict, Any, List
@@ -124,7 +124,7 @@ class TaskStore:
                             selectors_json,
                             values_json,
                             t.get("status", "pending"),
-                            t.get("created", datetime.utcnow().isoformat()),
+                            t.get("created", datetime.now(timezone.utc).isoformat()),
                             t.get("attempts", 0),
                             t.get("last_error", ""),
                             result_json,
@@ -153,7 +153,7 @@ class TaskStore:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 task_id, desc, task_type, url, selectors_json, values_json,
-                'pending', datetime.utcnow().isoformat(), 0, '', None,
+                'pending', datetime.now(timezone.utc).isoformat(), 0, '', None,
                 params_json, next_action
             ))
             conn.commit()
@@ -181,8 +181,8 @@ class TaskStore:
             for k, v in task['params'].items():
                 if k not in task:
                     task[k] = v
-            # Rename description -> task for compatibility
-            task['task'] = task.pop('description')
+            # Keep description for API clarity; also expose task alias for compatibility
+            task['task'] = task.get('description')
             return task
 
     def get_task(self, task_id: str) -> Optional[Dict]:
@@ -205,7 +205,8 @@ class TaskStore:
             for k, v in task['params'].items():
                 if k not in task:
                     task[k] = v
-            task['task'] = task.pop('description')
+            # Keep description for API clarity; also expose task alias for compatibility
+            task['task'] = task.get('description')
             return task
 
     def update_task(self, task_id: str, updates: Dict):
@@ -255,7 +256,7 @@ def load_tasks():
             t['values'] = json.loads(t.pop('field_values') or '{}')
             if t['result']:
                 t['result'] = json.loads(t['result'])
-            t['task'] = t.pop('description')
+            t['task'] = t.get('description')
             tasks.append(t)
         return tasks
 
@@ -264,6 +265,9 @@ def get_next_task():
 
 def update_task(task_id, updates):
     return _task_store.update_task(task_id, updates)
+
+def get_task(task_id):
+    return _task_store.get_task(task_id)
 
 # NOTE: The original 'log' function conflicted with the module logger.
 # Renamed to _legacy_log to preserve backward compatibility if needed.
@@ -348,7 +352,7 @@ def request_approval(task_desc: str, url: str, action_details) -> bool:
     if os.getenv("XANDER_AUTO_APPROVE", "").lower() in ("1", "true", "yes"):
         return True
     print("\n" + "="*60)
-    print(f"🔴 ACTION REQUIRES APPROVAL")
+    print("🔴 ACTION REQUIRES APPROVAL")
     print(f"Task: {task_desc}")
     print(f"URL:  {url}")
     print(f"Will: {action_details}")
@@ -524,7 +528,7 @@ def run_loop(poll_interval: float = 2.0):
             time.sleep(poll_interval)
     except KeyboardInterrupt:
         log.info("Operator loop stopped by user")
-    except Exception as e:
+    except Exception:
         log.exception("Operator loop crashed")
         raise
 
@@ -587,7 +591,7 @@ def main():
                 from . import reporter
                 report_path = reporter.generate_report(store=_task_store)
                 log.info(f"HTML report generated: {report_path}")
-            except Exception as e:
+            except Exception:
                 log.exception("Failed to generate HTML report")
         log.info("✅ Operator run complete")
 

@@ -7,7 +7,7 @@ import json
 import hashlib
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any, List
 import logging
 
 # Use a logger instead of print; fallback to print if logging not configured
@@ -71,8 +71,10 @@ def _init():
         logging.error(f"Vector memory init failed: {e}")
         DEPS_AVAILABLE = False
 
-def _normalize(vec: np.ndarray):
-    """Normalize vector for cosine similarity."""
+def _normalize(vec):
+    """Normalize vector for cosine similarity (no-op when deps missing)."""
+    if not DEPS_AVAILABLE:
+        return vec
     norm = np.linalg.norm(vec)
     if norm > 0:
         vec = vec / norm

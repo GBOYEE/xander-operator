@@ -1,10 +1,7 @@
 """Tests for reporter module."""
-import pytest
 from pathlib import Path
 from xander_operator.reporter import generate_report, load_tasks_for_report
 from xander_operator import TaskStore
-import tempfile
-import sqlite3
 
 def test_generate_report_creates_file(tmp_path: Path):
     db_path = tmp_path / "test.db"

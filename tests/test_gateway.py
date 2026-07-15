@@ -1,6 +1,5 @@
-import pytest
 from fastapi.testclient import TestClient
-from gateway import create_app, store
+from gateway import create_app
 
 client = TestClient(create_app())
 
